@@ -164,23 +164,32 @@ def rnn_model():
 	return model
 
 
-############################ Training #######################
-X, y = get_training_data(data_01, 10)
-X = np.array(X)
-y = np.array(y)
-print(X.shape)
+# ############################ Training #######################
+# X, y = get_training_data(data_01, 10)
+# X = np.array(X)
+# y = np.array(y)
+# print(X.shape)
 
-# reshape from [samples, timesteps] into [samples, timesteps, features]
-n_features = 1
-X = X.reshape((X.shape[0], X.shape[1], n_features))
+# # reshape from [samples, timesteps] into [samples, timesteps, features]
+# n_features = 1
+# X = X.reshape((X.shape[0], X.shape[1], n_features))
 
-model = rnn_model()
-model.fit(X, y, epochs=10)
-model.save('rnn.h5')
+# model = rnn_model()
+# model.fit(X, y, epochs=10)
+# model.save('rnn.h5')
 
 
 
 # ############################### load the model for prediction #######################
+
+def predict_proba(X, model, num_samples):
+    preds = [model(X, training=True) for _ in range(num_samples)]
+    # print(np.stack(preds))
+    min_pred = max(np.stack(preds))
+    max_pred = min(np.stack(preds))
+    return np.stack(preds).mean(axis=0), min_pred, max_pred
+
+
 model = tf.keras.models.load_model('rnn.h5', custom_objects={'MCDropout': MCDropout})
 print(model.summary())
 
@@ -188,15 +197,22 @@ test_sequence = data_02[10]
 X , y = split_sequence(test_sequence, 10)
 
 y_pred = []
+y_min = []
+y_max = []
 
 for i in range (len(y)):
 	x_input = np.array(X[i])
 	x_input = x_input.reshape((1, 10, 1))
-	yhat = model.predict(x_input)
-	y_pred.append(yhat[0])
+	# yhat = model.predict(x_input)
+	yhat, min_pred, max_pred = predict_proba(x_input, model, 10)
+	# print(yhat[0], min_pred[0])
+	y_pred.append(yhat[0][0])
+	y_min.append(min_pred[0][0])
+	y_max.append(max_pred[0][0])
 
-print(len(y))
-print(len(y_pred))
+
+# print(len(y))
+# print(len(y_pred))
 # print(y_pred[0])
 
 
@@ -205,8 +221,22 @@ print(len(y_pred))
 fig = plt.figure()
 
 x = list(range(1, len(y)+1 ))
+x = np.array(x)
+
 plt.plot(x, y, '.-b', label='ground truth')
 plt.plot(x, y_pred, '--r', label='prediction')
+
+y_pred = np.array(y_pred)
+print(x.shape)
+print(len(y))
+print(y_pred)
+y_min = np.array(y_min)
+y_max = np.array(y_max)
+
+print()
+
+plt.fill_between(x, y_pred - (y_pred - y_min), y_pred + (y_max - y_pred),
+                 color='gray', alpha=0.2)
 plt.grid()
 plt.xlabel('step')
 plt.ylabel('LFoot position - MN03')
