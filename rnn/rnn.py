@@ -106,103 +106,113 @@ plt.show()
 
 
 # ########################### prepare the training data ##################
-# # split a univariate sequence into samples
-# def split_sequence(sequence, n_steps):
-# 	X, y = list(), list()
-# 	for i in range(len(sequence)):
-# 		# find the end of this pattern
-# 		end_ix = i + n_steps
-# 		# check if we are beyond the sequence
-# 		if end_ix > len(sequence)-1:
-# 			break
-# 		# gather input and output parts of the pattern
-# 		seq_x, seq_y = sequence[i:end_ix], sequence[end_ix]
-# 		X.append(seq_x)
-# 		y.append(seq_y)
-# 	return X, y
+# split a univariate sequence into samples
+def split_sequence(sequence, n_steps):
+	X, y = list(), list()
+	for i in range(len(sequence)):
+		# find the end of this pattern
+		end_ix = i + n_steps
+		# check if we are beyond the sequence
+		if end_ix > len(sequence)-1:
+			break
+		# gather input and output parts of the pattern
+		seq_x, seq_y = sequence[i:end_ix], sequence[end_ix]
+		X.append(seq_x)
+		y.append(seq_y)
+	return X, y
 
-# def get_training_data(data_sequence, n_steps):
-# 	for i in range (len(data_sequence)):
-# 		if i == 0:
-# 			X , y = split_sequence(data_sequence[i], n_steps)
-# 		else:
-# 			X1, y1 = split_sequence(data_sequence[i], n_steps)
-# 			X = X + X1
-# 			y = y + y1
-# 	return X, y
+def get_training_data(data_sequence, n_steps):
+	for i in range (len(data_sequence)):
+		if i == 0:
+			X , y = split_sequence(data_sequence[i], n_steps)
+		else:
+			X1, y1 = split_sequence(data_sequence[i], n_steps)
+			X = X + X1
+			y = y + y1
+	return X, y
 
 
 # ########################### build model ##################
+class MCDropout(tf.keras.layers.Layer):
+    # def __init__(self, rate):
+        # super(MCDropout, self).__init__()
+        # self.rate = rate
+    def __init__(self, rate, **kwargs):
+	    self.rate = rate
+	    super(MCDropout, self).__init__(**kwargs)
 
-# class MCDropout(tf.keras.layers.Layer):
-#     def __init__(self, rate):
-#         super(MCDropout, self).__init__()
-#         self.rate = rate
+    def call(self, inputs):
+        return tf.nn.dropout(inputs, rate=self.rate)
 
-#     def call(self, inputs):
-#         return tf.nn.dropout(inputs, rate=self.rate)
+    def get_config(self):
+	    config = super().get_config().copy()
+	    # config = super(MCDropout, self).get_config()
+	    config.update({
+	        'rate': self.rate
+	    })
+	    return config
 
 
-# def rnn_model():
-# 	# define model
-# 	model = keras.Sequential()
-# 	model.add(layers.LSTM(50, activation='relu', input_shape=(10, 1)))
-# 	model.add(MCDropout(rate=0.5))
-# 	model.add(layers.Dense(1))
-# 	model.compile(optimizer='adam', loss='mse')
-# 	# print(model.summary())
-# 	return model
+def rnn_model():
+	# define model
+	model = keras.Sequential()
+	model.add(layers.LSTM(50, activation='relu', input_shape=(10, 1)))
+	model.add(MCDropout(rate=0.2))
+	model.add(layers.Dense(1))
+	model.compile(optimizer='adam', loss='mse')
+	print(model.summary())
+	return model
 
 
 ############################ Training #######################
-# X, y = get_training_data(data_01, 10)
-# X = np.array(X)
-# y = np.array(y)
-# print(X.shape)
+X, y = get_training_data(data_01, 10)
+X = np.array(X)
+y = np.array(y)
+print(X.shape)
 
-# # reshape from [samples, timesteps] into [samples, timesteps, features]
-# n_features = 1
-# X = X.reshape((X.shape[0], X.shape[1], n_features))
+# reshape from [samples, timesteps] into [samples, timesteps, features]
+n_features = 1
+X = X.reshape((X.shape[0], X.shape[1], n_features))
 
-# model = rnn_model()
-# model.fit(X, y, epochs=10, verbose=0)
-# model.save('rnn.h5')
+model = rnn_model()
+model.fit(X, y, epochs=10)
+model.save('rnn.h5')
 
 
 
 # ############################### load the model for prediction #######################
-# model = keras.models.load_model('rnn.h5')
-# print(model.summary())
+model = tf.keras.models.load_model('rnn.h5', custom_objects={'MCDropout': MCDropout})
+print(model.summary())
 
-# test_sequence = data_02[10]
-# X , y = split_sequence(test_sequence, 10)
+test_sequence = data_02[10]
+X , y = split_sequence(test_sequence, 10)
 
-# y_pred = []
+y_pred = []
 
-# for i in range (len(y)):
-# 	x_input = np.array(X[i])
-# 	x_input = x_input.reshape((1, 10, 1))
-# 	yhat = model.predict(x_input, verbose=0)
-# 	y_pred.append(yhat[0])
+for i in range (len(y)):
+	x_input = np.array(X[i])
+	x_input = x_input.reshape((1, 10, 1))
+	yhat = model.predict(x_input)
+	y_pred.append(yhat[0])
 
-# print(len(y))
-# print(len(y_pred))
-# # print(y_pred[0])
+print(len(y))
+print(len(y_pred))
+# print(y_pred[0])
 
 
 # # ##################### to plot the example data #################
 
-# fig = plt.figure()
+fig = plt.figure()
 
-# x = list(range(1, len(y)+1 ))
-# plt.plot(x, y, '.-b', label='ground truth')
-# plt.plot(x, y_pred, '--r', label='prediction')
-# plt.grid()
-# plt.xlabel('step')
-# plt.ylabel('LFoot position - MN03')
-# plt.legend()
+x = list(range(1, len(y)+1 ))
+plt.plot(x, y, '.-b', label='ground truth')
+plt.plot(x, y_pred, '--r', label='prediction')
+plt.grid()
+plt.xlabel('step')
+plt.ylabel('LFoot position - MN03')
+plt.legend()
 
-# plt.show()
+plt.show()
 
 
 
