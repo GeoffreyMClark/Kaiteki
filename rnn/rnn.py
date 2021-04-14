@@ -43,6 +43,7 @@ data_04 = data['walk']['MN05']['LFoot']['kinematics']
 # print('col: ', len(data_01)) 
 # print('row: ', len(data_01[0]))
 
+# preprocess data into 2 cycles one sequence
 def preprocess_sequence(data):
 	seq_len = math.floor(len(data)/2)
 	data_temp = []
@@ -54,11 +55,15 @@ def preprocess_sequence(data):
 	data = data_temp
 	return data
 
+training_sequence = []
+for i in range (4):
+	seq = preprocess_sequence(data['walk']['MN0'+str(i+2)]['LFoot']['kinematics'])
+	training_sequence.append(seq)
 
-data_01 = preprocess_sequence(data_01)
-data_02 = preprocess_sequence(data_02)
-data_03 = preprocess_sequence(data_03)
-data_04 = preprocess_sequence(data_04)
+data_01 = training_sequence[0]
+data_02 = training_sequence[1]
+data_03 = training_sequence[2]
+data_04 = training_sequence[3]
 
 
 
@@ -131,12 +136,20 @@ def get_training_data(data_sequence, n_steps):
 			y = y + y1
 	return X, y
 
+def get_model_input(training_sequence, n_steps):
+	for i in range (len(training_sequence)):
+		if i == 0:
+			X, y = get_training_data(training_sequence[i], 10)
+		else:
+			X_temp, y_temp = get_training_data(training_sequence[i], 10)
+			X = X + X_temp
+			y = y + y_temp
+	return X, y
+
+
 
 # ########################### build model ##################
 class MCDropout(tf.keras.layers.Layer):
-    # def __init__(self, rate):
-        # super(MCDropout, self).__init__()
-        # self.rate = rate
     def __init__(self, rate, **kwargs):
 	    self.rate = rate
 	    super(MCDropout, self).__init__(**kwargs)
@@ -156,7 +169,9 @@ class MCDropout(tf.keras.layers.Layer):
 def rnn_model():
 	# define model
 	model = keras.Sequential()
-	model.add(layers.LSTM(50, activation='relu', input_shape=(10, 1)))
+	model.add(layers.LSTM(100, activation='relu', return_sequences=True, input_shape=(10, 1)))
+	model.add(MCDropout(rate=0.2))
+	model.add(layers.LSTM(100, activation='relu'))
 	model.add(MCDropout(rate=0.2))
 	model.add(layers.Dense(1))
 	model.compile(optimizer='adam', loss='mse')
@@ -164,19 +179,20 @@ def rnn_model():
 	return model
 
 
-# ############################ Training #######################
-# X, y = get_training_data(data_01, 10)
+# # # ############################ Training #######################
+# X, y = get_model_input(training_sequence, 10)
+
+# print('the shape of training data: ', len(X) , ' ', len(X[0]))
 # X = np.array(X)
 # y = np.array(y)
-# print(X.shape)
 
 # # reshape from [samples, timesteps] into [samples, timesteps, features]
 # n_features = 1
 # X = X.reshape((X.shape[0], X.shape[1], n_features))
 
 # model = rnn_model()
-# model.fit(X, y, epochs=10)
-# model.save('rnn.h5')
+# model.fit(X, y, batch_size=100, epochs=30)
+# model.save('walk_rnn.h5')
 
 
 
@@ -190,59 +206,100 @@ def predict_proba(X, model, num_samples):
     return np.stack(preds).mean(axis=0), min_pred, max_pred
 
 
-model = tf.keras.models.load_model('rnn.h5', custom_objects={'MCDropout': MCDropout})
+model = tf.keras.models.load_model('walk_rnn.h5', custom_objects={'MCDropout': MCDropout})
 print(model.summary())
 
-test_sequence = data_02[10]
-X , y = split_sequence(test_sequence, 10)
+
+# load some data for testing 
+test_sequence = []
+for i in range (4):
+	seq = preprocess_sequence(data['walk']['MN0'+str(i+6)]['LFoot']['kinematics'])
+	test_sequence.append(seq[1])
+
+X =[]
+y = []
 
 y_pred = []
 y_min = []
 y_max = []
 
+
+print("check-01")
+# process the data and feed to the model
+for i in range (len(test_sequence)):
+	X_temp , y_temp = split_sequence(test_sequence[i], 10)
+	X.append(X_temp)
+	y.append(y_temp)
+
 for i in range (len(y)):
-	x_input = np.array(X[i])
-	x_input = x_input.reshape((1, 10, 1))
-	# yhat = model.predict(x_input)
-	yhat, min_pred, max_pred = predict_proba(x_input, model, 10)
-	# print(yhat[0], min_pred[0])
-	y_pred.append(yhat[0][0])
-	y_min.append(min_pred[0][0])
-	y_max.append(max_pred[0][0])
+	pred = []
+	ymin = []
+	ymax = []
+	print("check-0"+str(i+2))
+	for j in range (len(y[i])):
+		x_input = np.array(X[i][j])
+		x_input = x_input.reshape((1, 10, 1))
+		# yhat = model.predict(x_input)
+		yhat, min_pred, max_pred = predict_proba(x_input, model, 10)
+		# print(yhat[0], min_pred[0])
+		pred.append(yhat[0][0])
+		ymin.append(min_pred[0][0])
+		ymax.append(max_pred[0][0])
+	y_pred.append(pred)
+	y_min.append(ymin)
+	y_max.append(ymax)
 
 
-# print(len(y))
-# print(len(y_pred))
-# print(y_pred[0])
+# # print(len(y))
+# # print(len(y_pred))
+# # print(y_pred[0])
 
 
-# # ##################### to plot the example data #################
+# # # ##################### to plot the example data #################
 
-fig = plt.figure()
+# fig = plt.figure()
 
-x = list(range(1, len(y)+1 ))
-x = np.array(x)
+# x = list(range(1, len(y)+1 ))
+# x = np.array(x)
 
-plt.plot(x, y, '.-b', label='ground truth')
-plt.plot(x, y_pred, '--r', label='prediction')
+# plt.plot(x, y, '.-b', label='ground truth')
+# plt.plot(x, y_pred, '--r', label='prediction')
 
-y_pred = np.array(y_pred)
-print(x.shape)
-print(len(y))
-print(y_pred)
-y_min = np.array(y_min)
-y_max = np.array(y_max)
+# y_pred = np.array(y_pred)
+# y_min = np.array(y_min)
+# y_max = np.array(y_max)
 
-print()
+# print()
 
-plt.fill_between(x, y_pred - (y_pred - y_min), y_pred + (y_max - y_pred),
-                 color='gray', alpha=0.2)
-plt.grid()
-plt.xlabel('step')
-plt.ylabel('LFoot position - MN03')
-plt.legend()
+# plt.fill_between(x, y_pred - (y_pred - y_min), y_pred + (y_max - y_pred),
+#                  color='red', alpha=0.2)
+# plt.grid()
+# plt.xlabel('step')
+# plt.ylabel('LFoot position - MN03')
+# plt.legend()
 
+# plt.show()
+
+
+fig = plt.figure(figsize=(2, 2))
+
+for i in range (len(y)):
+	plt.subplot(2, 2, i+1)
+	x = list(range(1, len(y[i])+1 ))
+	x = np.array(x)
+
+	plt.plot(x, y[i], '.-b', label='ground truth')
+	plt.plot(x, y_pred[i], '--r', label='prediction')
+
+	pred = np.array(y_pred[i])
+	ymin = np.array(y_min[i])
+	ymax = np.array(y_max[i])
+	plt.fill_between(x, pred - (pred - ymin), pred + (ymax - pred),
+                 color='red', alpha=0.2)
+	plt.grid()
+	plt.xlabel('step')
+	plt.ylabel('LFoot position - MN0'+str(i+6))
+	plt.legend()
 plt.show()
-
 
 
