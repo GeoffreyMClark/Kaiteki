@@ -19,8 +19,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import copy
-import csv
-import json
 import pdb
 
 
@@ -33,30 +31,9 @@ import pdb
 # correspond to the height of several boys and girls measured from birth to
 # when they are 18 years old. The number and time of the measurements are the
 # same for each individual. To better understand the data we plot it.
-condition_list = ['walk', 'walk_dual','OA', 'OA_dual']
-
-subjects = ['MN02', 'MN03','MN04','MN05','MN06','MN07',
-'MN08','MN09','MN10','MN11']
-
-joints = ['LAnkle', 'LFemur', 'LFoot', 'LHip', 'LKnee', 'LTibia',
-'RAnkle', 'RFemur', 'RFoot', 'RHip', 'RKnee', 'RTibia',
-'Lumbar_bending', 'Lumbar_flexion', 'Lumbar_rotation',
-'Pelvis_list', 'Pelvis_rotation', 'Pelvis_tilt']
-
-parts = ['kinematics', 'kinetics', 'power']
-
-# Opening JSON file
-f = open('../dataset.json',)
-data = json.load(f)
-
 
 csvs = ['LKnee_MN04_walk_dual.xlsx',  'LKnee_MN04_walk.xlsx']
 dfs = [np.array(pd.read_excel(i, header=None, engine='openpyxl')) for i in csvs]
-
-k_all = np.array(data['walk_dual']['MN04']['LKnee']).T
-ka = k_all[:101,:]
-# plt.plot(ka[:101,:])
-# plt.show()
 
 # df0 = dfs[0]
 # angle0 = df0[:101,:]
@@ -78,8 +55,7 @@ max_torques = [mean_torques[i] + var_torques[i] for i in range(len(mean_torques)
 num_pcts = 101
 domain = np.arange(num_pcts)
 
-# a0 = angles[0].T
-a0 = ka.T
+a0 = angles[0].T
 df = FDataGrid(a0)
 
 dataset = skfda.datasets.fetch_growth()
@@ -170,5 +146,4 @@ basis_fd = fd.to_basis(BSpline(n_basis=7))
 fpca = FPCA(n_components=2, components_basis=Monomial(n_basis=4))
 fpca.fit(basis_fd)
 fpca.components_.plot()
-pdb.set_trace()
-# plt.show()
+plt.show()
